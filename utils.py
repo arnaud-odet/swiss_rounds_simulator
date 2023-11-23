@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import string
 
-def initiate_league(n_teams, n_rounds, strategies = {}):
+def initiate_league(n_teams, n_rounds, delta_level='linear' ,strategies = {}):
     if n_teams % 2 == 1 :
         raise ValueError('Please enter an even number of teams')
     if n_rounds > n_teams - 1 :
@@ -24,8 +24,13 @@ def initiate_league(n_teams, n_rounds, strategies = {}):
         calendar_columns.append(f"R{i+1}_opponent")
         calendar_columns.append(f"R{i+1}_result")
     levels = []
-    for j in range(n_teams):
-        levels.append((n_teams-j)/n_teams)
+    
+    if delta_level == 'linear':
+        for j in range(n_teams):
+            levels.append((n_teams-j)/n_teams)
+    elif delta_level =='exponential':
+        for j in range(n_teams):
+            levels.append( (1 / 2)**j )
     init_cal = [levels] + [[[]]*n_teams] + [[0]*n_teams] * 3 + ([['-']*n_teams] * (2*n_rounds))
     league_table = pd.DataFrame(init_cal, index= calendar_columns, columns = teams).transpose()
     
@@ -88,13 +93,13 @@ def assign_opponents(possible_games_matrix, league_table, round_number, verbose 
                                 keep_going = False
                             break     
         if verbose :
-            print('Unsuccessfull allocation based on rankings, randomness was used')                          
+            print('Unsuccessfull allocation based on rankings, probabilistic was used')                          
     return pgm, lt
 
 
-def simulate_game(team_level, opponent_level, team_strat = 0, opponent_strat = 0, method = 'randomness', verbose = False):
+def simulate_game(team_level, opponent_level, team_strat = 0, opponent_strat = 0, method = 'probabilistic', verbose = False):
     """
-    Method can be either 'randomness' or 'deterministic'
+    Method can be either 'probabilistic' or 'deterministic'
     Team_strat (respectively opponent_strat) takes 1 if the team (respectively the opponent) choose to purposedly loose the game
     """
     
@@ -118,7 +123,7 @@ def simulate_game(team_level, opponent_level, team_strat = 0, opponent_strat = 0
     return res
 
 
-def play_round(league_table, round_number, method = 'randomness', verbose = False):
+def play_round(league_table, round_number, method = 'probabilistic', verbose = False):
     
     if f"R{round_number}_opponent" not in league_table.columns: 
         raise ValueError(f'The league was initiated with less than {round_number} games')
@@ -135,6 +140,7 @@ def play_round(league_table, round_number, method = 'randomness', verbose = Fals
             team_strat = 1 if round_number in team_strat_list else 0
             opponent_strat = 1 if round_number in opponent_strat_list else 0
             strat = team_strat + opponent_strat
+            print(opponent_level, team_level, type(opponent_level), type(team_level))
             result = simulate_game(team_level, opponent_level, team_strat, opponent_strat, method = method, verbose = verbose)
             league_table.loc[team,res_str] = result[0]
             league_table.loc[opponent,res_str] = result[1]
@@ -159,9 +165,9 @@ def play_round(league_table, round_number, method = 'randomness', verbose = Fals
     return league_table.sort_values(by='Win_rate', ascending = False)  
 
 
-def simulate_tournament(nb_teams, nb_games, strategies = {}, method = 'randomness',verbose=False):
+def simulate_tournament(nb_teams, nb_games, strategies = {}, method = 'probabilistic', delta_level = 'linear', verbose=False):
 
-    gdf, lt = initiate_league(nb_teams,nb_games, strategies)
+    gdf, lt = initiate_league(nb_teams,nb_games, delta_level=delta_level,strategies=strategies)
     for i in range(nb_games):
         gdf, lt = assign_opponents(gdf,lt,i+1, verbose = verbose)
         lt = play_round(lt,i+1, method = method,verbose = verbose)
@@ -169,11 +175,11 @@ def simulate_tournament(nb_teams, nb_games, strategies = {}, method = 'randomnes
     return lt
 
 
-def simulate_n_tournaments(n_tournaments, nb_teams, nb_games, strategies = {}, method = 'randomness') :
+def simulate_n_tournaments(n_tournaments, nb_teams, nb_games, strategies = {}, method = 'probabilistic', delta_level = 'linear') :
     first = True 
     
     for i in range(n_tournaments) :
-        lt = simulate_tournament(nb_teams, nb_games, strategies = strategies,method = method)
+        lt = simulate_tournament(nb_teams, nb_games, strategies = strategies, delta_level=delta_level,method = method)
         if first :
             out = lt[['Level','Strategy','Win_rate']].rename(columns={'Win_rate':'WR_0'})
             first = False
@@ -187,13 +193,13 @@ def simulate_n_tournaments(n_tournaments, nb_teams, nb_games, strategies = {}, m
     return out.sort_values(by = 'Avg_WR', ascending = False)
 
 
-def compare_settings(n_tournaments, n_teams, n_rounds, strategies ={}, probabilistic=True, deterministic=True):
+def compare_settings(n_tournaments, n_teams, n_rounds, delta_level='linear' ,strategies={}, probabilistic=True, deterministic=True):
 
     if probabilistic :
         print('Probabilistic resolution')
-        r = simulate_n_tournaments(n_tournaments,n_teams,n_rounds, method = 'randomness')
+        r = simulate_n_tournaments(n_tournaments,n_teams,n_rounds, delta_level=delta_level, method = 'probabilistic')
         r.rename(columns = {'Avg_WR': 'Control_avg_WR'}, inplace = True)
-        rs = simulate_n_tournaments(n_tournaments,n_teams,n_rounds, method = 'randomness', strategies = strategies)
+        rs = simulate_n_tournaments(n_tournaments,n_teams,n_rounds, delta_level=delta_level, method = 'probabilistic', strategies = strategies)
         rs.rename(columns = {'Avg_WR': 'Strategic_avg_WR'}, inplace = True)
         rs = rs.merge(r['Control_avg_WR'], left_index= True, right_index=True)
         rs['Delta'] = rs['Strategic_avg_WR'] - rs['Control_avg_WR']
@@ -204,9 +210,9 @@ def compare_settings(n_tournaments, n_teams, n_rounds, strategies ={}, probabili
     
     if deterministic:
         print('Deterministic resolution')
-        d = simulate_n_tournaments(n_tournaments,n_teams,n_rounds, method = 'deterministic')
+        d = simulate_n_tournaments(n_tournaments,n_teams,n_rounds, delta_level=delta_level, method = 'deterministic')
         d.rename(columns = {'Avg_WR': 'Control_avg_WR'}, inplace = True)
-        ds = simulate_n_tournaments(n_tournaments,n_teams,n_rounds, method = 'deterministic',strategies = strategies)
+        ds = simulate_n_tournaments(n_tournaments,n_teams,n_rounds, delta_level=delta_level, method = 'deterministic', strategies = strategies)
         ds.rename(columns = {'Avg_WR': 'Strategic_avg_WR'}, inplace = True)
         ds = ds.merge(d['Control_avg_WR'], left_index= True, right_index=True)
         ds['Delta'] = ds['Strategic_avg_WR'] - ds['Control_avg_WR']
