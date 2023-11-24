@@ -23,8 +23,8 @@ def initiate_league(n_teams, n_rounds, delta_level='linear' ,strategies = {}):
     for i in range(n_rounds):
         calendar_columns.append(f"R{i+1}_opponent")
         calendar_columns.append(f"R{i+1}_result")
-    levels = []
     
+    levels = []
     if delta_level == 'linear':
         for j in range(n_teams):
             levels.append((n_teams-j)/n_teams)
@@ -140,7 +140,6 @@ def play_round(league_table, round_number, method = 'probabilistic', verbose = F
             team_strat = 1 if round_number in team_strat_list else 0
             opponent_strat = 1 if round_number in opponent_strat_list else 0
             strat = team_strat + opponent_strat
-            print(opponent_level, team_level, type(opponent_level), type(team_level))
             result = simulate_game(team_level, opponent_level, team_strat, opponent_strat, method = method, verbose = verbose)
             league_table.loc[team,res_str] = result[0]
             league_table.loc[opponent,res_str] = result[1]
@@ -176,6 +175,7 @@ def simulate_tournament(nb_teams, nb_games, strategies = {}, method = 'probabili
 
 
 def simulate_n_tournaments(n_tournaments, nb_teams, nb_games, strategies = {}, method = 'probabilistic', delta_level = 'linear') :
+
     first = True 
     
     for i in range(n_tournaments) :
@@ -194,7 +194,7 @@ def simulate_n_tournaments(n_tournaments, nb_teams, nb_games, strategies = {}, m
 
 
 def compare_settings(n_tournaments, n_teams, n_rounds, delta_level='linear' ,strategies={}, probabilistic=True, deterministic=True):
-
+    
     if probabilistic :
         print('Probabilistic resolution')
         r = simulate_n_tournaments(n_tournaments,n_teams,n_rounds, delta_level=delta_level, method = 'probabilistic')
