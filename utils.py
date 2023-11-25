@@ -52,9 +52,9 @@ def assign_opponents(possible_games_matrix, league_table, round_number, verbose 
     
     ref_str = f'R{round_number}_opponent'
     
+    # Preferred allocation based on rankings from top to bottom
     lt = league_table.copy()
     pgm = possible_games_matrix.copy()
-    
     nb_success = 0
     if round_number == 1 :
         lt = lt.sample(frac = 1)
@@ -73,8 +73,65 @@ def assign_opponents(possible_games_matrix, league_table, round_number, verbose 
                     if verbose and nb_success == lt.shape[0] :
                         print('Successfull allocation based on ranking')
                     break
-    
+    """
+    if not nb_success == lt.shape[0] :
+        # Second method based on distances in delta_win_rate
+        lt = league_table.copy()
+        pgm = possible_games_matrix.copy()
+        nb_success = 0
+        ### Determining possible opposition based on game_patrix
+        pairs = []
+        for a in lt.index :
+            for b in lt.index :
+                if pgm.loc[a,b]:
+                    pairs.append([[a,b]])
+        poss_pairs = pd.DataFrame(pairs, columns = ['pair'])
 
+        n_teams = len(list(lt.index))
+        pairs = list(poss_pairs['pair'])
+        pairings = [[pair] for pair in pairs]
+
+        ### Finding all possible appairments
+        for i in range(int(n_teams/2)-1):
+            pps = []
+            for pairing in pairings :
+                for pair in pairs :
+                    possible = True
+                    for team in pair :
+                        for game in pairing :
+                            if team in game :
+                                possible = False
+                    if possible :
+                        new_pairing = pairing + [pair]
+                        pps.append(new_pairing) 
+            pairings = pps.copy()  
+
+        ### Selecting an random appairment over those with minimum Mean Absolute Delta WR
+        deltas_wr = []
+        for pp in pairings :
+            delta_wr = 0
+            for game in pp :
+                delta_wr += np.abs(lt.loc[game[0],'Win_rate'] - lt.loc[game[1],'Win_rate'])
+            deltas_wr.append(delta_wr)
+        res = pd.DataFrame(pairings, deltas_wr).reset_index().rename(columns={'index':'mean_absolute_delta_wr'}).sort_values(by = 'mean_absolute_delta_wr',ascending=True)
+        res = res[res['mean_absolute_delta_wr'] == res['mean_absolute_delta_wr'].min()].sample(frac=1).iloc[0]
+        
+        ### Allocating opponent based on res
+        for i in range(int(n_teams/2)):
+            try :
+                lt.loc[res[i][0], ref_str] = res[i][1]
+                lt.loc[res[i][1], ref_str] = res[i][0]
+                pgm.loc[res[i][0], res[i][1]] = False
+                pgm.loc[res[i][1], res[i][0]] = False
+                nb_success += 2
+            except : 
+                pass
+        if verbose and nb_success == lt.shape[0] :
+            print('Successfull allocation based on minimizing delta_wr distances')  
+            return pgm, lt     
+            
+    """
+    # Last resort : random allocation if none of the above worked
     if not nb_success == lt.shape[0] :
         keep_going = True
         while keep_going :
