@@ -18,6 +18,8 @@ def initiate_league(n_teams, n_rounds, delta_level='linear' ,strategies = {}):
     teams = alphabet[:n_teams]
     init_games = [True] * n_teams
     possible_games_matrix = pd.DataFrame([init_games] * n_teams, index = teams, columns = teams)
+    for team in teams :
+        possible_games_matrix.loc[team,team] = False
     
     calendar_columns = ['Level','Strategy','Nb_win','Nb_games',"Win_rate"]
     for i in range(n_rounds):
@@ -93,7 +95,7 @@ def assign_opponents(possible_games_matrix, league_table, round_number, verbose 
                                 keep_going = False
                             break     
         if verbose :
-            print('Unsuccessfull allocation based on rankings, probabilistic was used')                          
+            print('Unsuccessfull allocation based on rankings, random allocation was performed')                          
     return pgm, lt
 
 
