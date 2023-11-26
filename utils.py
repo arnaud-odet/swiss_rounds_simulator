@@ -71,7 +71,7 @@ def assign_opponents(possible_games_matrix, league_table, round_number, verbose 
                     pgm.loc[opposing_team, team] = False
                     nb_success +=2
                     if verbose and nb_success == lt.shape[0] :
-                        print('Successfull allocation based on ranking')
+                        print(f'Round number {round_number} - Successfull allocation based on ranking')
                     break
     """
     if not nb_success == lt.shape[0] :
@@ -79,19 +79,37 @@ def assign_opponents(possible_games_matrix, league_table, round_number, verbose 
         lt = league_table.copy()
         pgm = possible_games_matrix.copy()
         nb_success = 0
-        ### Determining possible opposition based on game_patrix
+        ### Determining possible opposition based on game_matrix
         pairs = []
         for a in lt.index :
             for b in lt.index :
                 if pgm.loc[a,b]:
-                    pairs.append([[a,b]])
-        poss_pairs = pd.DataFrame(pairs, columns = ['pair'])
+                    pairs.append({'pair' :[a,b], 'wr_delta' : np.abs(lt.loc[a,'Win_rate'] - lt.loc[b,'Win_rate'])})
+        poss_pairs = pd.DataFrame(pairs)
 
+        ### For all team, keep the bottom half delta_wr
         n_teams = len(list(lt.index))
+        add_indices = []
+        for team in lt.index:
+            mask = [team in game for game in poss_pairs['pair']]
+            team_indices = list(poss_pairs[mask].sort_values(by='wr_delta', ascending = True)[:int(poss_pairs.shape[0]/n_teams)].index)
+            add_indices = add_indices + team_indices
+            add_indices = list(dict.fromkeys(add_indices))
+        poss_pairs = poss_pairs.loc[add_indices]
+
+        ### Droping duplicates
+        seen_pairs =[]
+        drop_ind = []
+        for ind,pair in zip(poss_pairs.index, poss_pairs['pair']):
+            if [pair[1], pair[0]] in seen_pairs :
+                drop_ind.append(ind)
+            else : 
+                seen_pairs.append(pair)
+        poss_pairs = poss_pairs.drop(drop_ind)
+        
+        ### Finding all possible appairments
         pairs = list(poss_pairs['pair'])
         pairings = [[pair] for pair in pairs]
-
-        ### Finding all possible appairments
         for i in range(int(n_teams/2)-1):
             pps = []
             for pairing in pairings :
@@ -115,7 +133,7 @@ def assign_opponents(possible_games_matrix, league_table, round_number, verbose 
             deltas_wr.append(delta_wr)
         res = pd.DataFrame(pairings, deltas_wr).reset_index().rename(columns={'index':'mean_absolute_delta_wr'}).sort_values(by = 'mean_absolute_delta_wr',ascending=True)
         res = res[res['mean_absolute_delta_wr'] == res['mean_absolute_delta_wr'].min()].sample(frac=1).iloc[0]
-        
+
         ### Allocating opponent based on res
         for i in range(int(n_teams/2)):
             try :
@@ -127,10 +145,10 @@ def assign_opponents(possible_games_matrix, league_table, round_number, verbose 
             except : 
                 pass
         if verbose and nb_success == lt.shape[0] :
-            print('Successfull allocation based on minimizing delta_wr distances')  
+            print(f'Round number {round_number} - Successfull allocation based on minimizing delta_wr distances')  
             return pgm, lt     
-            
     """
+           
     # Last resort : random allocation if none of the above worked
     if not nb_success == lt.shape[0] :
         keep_going = True
@@ -152,7 +170,7 @@ def assign_opponents(possible_games_matrix, league_table, round_number, verbose 
                                 keep_going = False
                             break     
         if verbose :
-            print('Unsuccessfull allocation based on rankings, random allocation was performed')                          
+            print(f'Round number {round_number} - Unsuccessfull allocation based on rankings, random allocation was performed')                          
     return pgm, lt
 
 
@@ -223,12 +241,12 @@ def play_round(league_table, round_number, method = 'probabilistic', verbose = F
     return league_table.sort_values(by='Win_rate', ascending = False)  
 
 
-def simulate_tournament(nb_teams, nb_games, strategies = {}, method = 'probabilistic', delta_level = 'linear', verbose=False):
+def simulate_tournament(nb_teams, nb_games, strategies = {}, method = 'probabilistic', delta_level = 'linear', verbose_pairing = True, verbose_game = True):
 
     gdf, lt = initiate_league(nb_teams,nb_games, delta_level=delta_level,strategies=strategies)
     for i in range(nb_games):
-        gdf, lt = assign_opponents(gdf,lt,i+1, verbose = verbose)
-        lt = play_round(lt,i+1, method = method,verbose = verbose)
+        gdf, lt = assign_opponents(gdf,lt,i+1, verbose = verbose_pairing)
+        lt = play_round(lt,i+1, method = method,verbose = verbose_game)
 
     return lt
 
