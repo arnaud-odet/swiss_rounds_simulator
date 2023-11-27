@@ -1,6 +1,10 @@
 import pandas as pd
 import numpy as np
 import string
+from swissdutch.dutch import DutchPairingEngine
+from swissdutch.player import Player
+
+engine = DutchPairingEngine()
 
 def initiate_league(n_teams, n_rounds, delta_level='linear' ,strategies = {}):
     if n_teams % 2 == 1 :
@@ -16,12 +20,9 @@ def initiate_league(n_teams, n_rounds, delta_level='linear' ,strategies = {}):
         alphabet = alphabet + [alphabet[i] + elem for elem in  alphabet]
 
     teams = alphabet[:n_teams]
-    init_games = [True] * n_teams
-    possible_games_matrix = pd.DataFrame([init_games] * n_teams, index = teams, columns = teams)
-    for team in teams :
-        possible_games_matrix.loc[team,team] = False
+    tm_nbrs = range(1, n_teams+1)
     
-    calendar_columns = ['Level','Strategy','Nb_win','Nb_games',"Win_rate"]
+    calendar_columns = ['Id','Level','Strategy','Nb_win','Nb_games',"Win_rate"]
     for i in range(n_rounds):
         calendar_columns.append(f"R{i+1}_opponent")
         calendar_columns.append(f"R{i+1}_result")
@@ -33,7 +34,7 @@ def initiate_league(n_teams, n_rounds, delta_level='linear' ,strategies = {}):
     elif delta_level =='exponential':
         for j in range(n_teams):
             levels.append( (1 / 2)**j )
-    init_cal = [levels] + [[[]]*n_teams] + [[0]*n_teams] * 3 + ([['-']*n_teams] * (2*n_rounds))
+    init_cal = [tm_nbrs] + [levels] + [[[]]*n_teams] + [[0]*n_teams] * 3 + ([['-']*n_teams] * (2*n_rounds))
     league_table = pd.DataFrame(init_cal, index= calendar_columns, columns = teams).transpose()
     
     for strat in strategies.keys():
@@ -42,10 +43,160 @@ def initiate_league(n_teams, n_rounds, delta_level='linear' ,strategies = {}):
         except : 
             pass
     
-    return possible_games_matrix , league_table.round(2)
+    return league_table.round(2)
 
 
-def assign_opponents(possible_games_matrix, league_table, round_number, verbose = False):
+def assign_opponents(league_table:pd.DataFrame, round_number:int):
+    
+    if f"R{round_number}_opponent" not in league_table.columns: 
+        raise ValueError(f'The league was initiated with less than {round_number} games')  
+
+    players = []
+    for player in league_table.index :
+        if round_number == 1 :
+            players.append(Player(name = player, rating = league_table.loc[player,'Win_rate'], pairing_no=league_table.loc[player,'Id']))
+        else :
+            opps = []
+            for i in range(1, round_number):
+                opps.append(league_table.loc[league_table.loc[player,f'R{i}_opponent'],'Id'])
+            players.append(Player(name = player, rating = league_table.loc[player,'Win_rate'], pairing_no=league_table.loc[player,'Id'], score = league_table.loc[player,'Nb_win'], opponents=opps))
+    pairing = engine.pair_round(round_number, players)
+    for game in pairing :
+        league_table.loc[game.name, f'R{round_number}_opponent'] = league_table.query(f"Id == {game.opponents[round_number-1]}").index[0]  
+    
+    return league_table  
+
+
+def simulate_game(team_level, opponent_level, team_strat = 0, opponent_strat = 0, method = 'probabilistic', verbose = False):
+    """
+    Method can be either 'probabilistic' or 'deterministic'
+    Team_strat (respectively opponent_strat) takes 1 if the team (respectively the opponent) choose to purposedly loose the game
+    """
+    
+    if team_strat == 1 and opponent_strat == 0 :
+        res = ("Loss", "Win")
+    elif team_strat == 0 and opponent_strat == 1 :
+        res = ("Win", "Loss")
+    else :
+        if method == 'deterministic' and not team_level == opponent_level:
+            if team_level > opponent_level:
+                res = ("Win", "Loss")
+            else :
+                res = ("Loss", "Win")
+        else :
+            threshold = team_level / (opponent_level + team_level)
+            rand = np.random.random()   
+            if rand < threshold : 
+                res = ("Win", "Loss")   
+            else : 
+                res = ("Loss", "Win")
+    return res
+
+
+def play_round(league_table, round_number, method = 'probabilistic', verbose = False):
+    
+    if f"R{round_number}_opponent" not in league_table.columns: 
+        raise ValueError(f'The league was initiated with less than {round_number} games')
+    
+    opp_str = f'R{round_number}_opponent'
+    res_str = f'R{round_number}_result'
+    for team in league_table.index:
+        if league_table.loc[team, res_str] == '-':
+            opponent = league_table.loc[team, opp_str]            
+            if verbose :
+                # keeping memory of pre-game records
+                team_record_str = f"({league_table.loc[team,'Nb_win']}-{league_table.loc[team,'Nb_games']-league_table.loc[team,'Nb_win']})"
+                opponent_record_str = f"({league_table.loc[opponent,'Nb_win']}-{league_table.loc[opponent,'Nb_games']-league_table.loc[opponent,'Nb_win']})"
+            team_level = league_table.loc[team, 'Level']
+            opponent_level = league_table.loc[opponent, 'Level']
+            team_strat_list = league_table.loc[team, 'Strategy']
+            opponent_strat_list = league_table.loc[opponent, 'Strategy']
+            team_strat = 1 if round_number in team_strat_list else 0
+            opponent_strat = 1 if round_number in opponent_strat_list else 0
+            strat = team_strat + opponent_strat
+            result = simulate_game(team_level, opponent_level, team_strat, opponent_strat, method = method, verbose = verbose)
+            league_table.loc[team,res_str] = result[0]
+            league_table.loc[opponent,res_str] = result[1]
+            if result[0] == 'Win':
+                league_table.loc[team,'Nb_win'] +=1
+                winner = team
+            else :
+                league_table.loc[opponent,'Nb_win'] +=1
+                winner = opponent
+            league_table.loc[team,'Nb_games'] +=1
+            league_table.loc[opponent,'Nb_games'] +=1            
+            if (team_level > opponent_level and result[0] == 'Loss') or team_level < opponent_level and result[0] == 'Win':
+                unexpected = True
+            else :
+                unexpected = False
+            
+            if verbose :
+                print(f'Round number {round_number}, game {team} {team_record_str} vs {opponent} {opponent_record_str} of levels {np.round(team_level,2)} vs {np.round(opponent_level,2)}: victory for {winner}{" - UNEXPECTED" if unexpected else ""} {" - STRATEGIC " if strat > 0 else ""}')
+
+    league_table['Win_rate'] = league_table['Nb_win'] / league_table['Nb_games']
+    
+    return league_table.sort_values(by='Win_rate', ascending = False)  
+
+
+def simulate_tournament(nb_teams, nb_games, strategies = {}, method = 'probabilistic', delta_level = 'linear', verbose = True):
+
+    lt = initiate_league(nb_teams,nb_games, delta_level=delta_level,strategies=strategies)
+    for i in range(nb_games):
+        lt = assign_opponents(lt,i+1)
+        lt = play_round(lt,i+1, method = method,verbose = verbose)
+
+    return lt
+
+
+def simulate_n_tournaments(n_tournaments, nb_teams, nb_games, strategies = {}, method = 'probabilistic', delta_level = 'linear') :
+
+    first = True 
+    
+    for i in range(n_tournaments) :
+        lt = simulate_tournament(nb_teams, nb_games, strategies = strategies, delta_level=delta_level,method = method, verbose = False)
+        if first :
+            out = lt[['Level','Strategy','Win_rate']].rename(columns={'Win_rate':'WR_0'})
+            first = False
+        else :
+            temp_lt = lt[['Win_rate']].rename(columns={'Win_rate':f'WR_{i}'})
+            out = out.merge(temp_lt, left_index=True, right_index=True)
+    out['Avg_WR'] = out.drop(columns = ['Level','Strategy']).mean(axis=1)
+    
+    out = out[['Level','Strategy','Avg_WR']]
+    out = out.round(2)
+    return out.sort_values(by = 'Avg_WR', ascending = False)
+
+
+def compare_settings(n_tournaments, n_teams, n_rounds, delta_level='linear' ,strategies={}, probabilistic=True, deterministic=True):
+    
+    if probabilistic :
+        print('Probabilistic resolution')
+        r = simulate_n_tournaments(n_tournaments,n_teams,n_rounds, delta_level=delta_level, method = 'probabilistic')
+        r.rename(columns = {'Avg_WR': 'Control_avg_WR'}, inplace = True)
+        rs = simulate_n_tournaments(n_tournaments,n_teams,n_rounds, delta_level=delta_level, method = 'probabilistic', strategies = strategies)
+        rs.rename(columns = {'Avg_WR': 'Strategic_avg_WR'}, inplace = True)
+        rs = rs.merge(r['Control_avg_WR'], left_index= True, right_index=True)
+        rs['Delta'] = rs['Strategic_avg_WR'] - rs['Control_avg_WR']
+        display(rs)
+    
+    if probabilistic and deterministic :
+        print('---------------------------------------------------')
+    
+    if deterministic:
+        print('Deterministic resolution')
+        d = simulate_n_tournaments(n_tournaments,n_teams,n_rounds, delta_level=delta_level, method = 'deterministic')
+        d.rename(columns = {'Avg_WR': 'Control_avg_WR'}, inplace = True)
+        ds = simulate_n_tournaments(n_tournaments,n_teams,n_rounds, delta_level=delta_level, method = 'deterministic', strategies = strategies)
+        ds.rename(columns = {'Avg_WR': 'Strategic_avg_WR'}, inplace = True)
+        ds = ds.merge(d['Control_avg_WR'], left_index= True, right_index=True)
+        ds['Delta'] = ds['Strategic_avg_WR'] - ds['Control_avg_WR']
+        display(ds)  
+        
+    if not probabilistic and not deterministic :
+        print('No setting were set to True for comparison')
+        
+        
+def DEPRECATED_assign_opponents(possible_games_matrix, league_table, round_number, verbose = False):
     
     if f"R{round_number}_opponent" not in league_table.columns: 
         raise ValueError(f'The league was initiated with less than {round_number} games')
@@ -172,128 +323,3 @@ def assign_opponents(possible_games_matrix, league_table, round_number, verbose 
         if verbose :
             print(f'Round number {round_number} - Unsuccessfull allocation based on rankings, random allocation was performed')                          
     return pgm, lt
-
-
-def simulate_game(team_level, opponent_level, team_strat = 0, opponent_strat = 0, method = 'probabilistic', verbose = False):
-    """
-    Method can be either 'probabilistic' or 'deterministic'
-    Team_strat (respectively opponent_strat) takes 1 if the team (respectively the opponent) choose to purposedly loose the game
-    """
-    
-    if team_strat == 1 and opponent_strat == 0 :
-        res = ("Loss", "Win")
-    elif team_strat == 0 and opponent_strat == 1 :
-        res = ("Win", "Loss")
-    else :
-        if method == 'deterministic' and not team_level == opponent_level:
-            if team_level > opponent_level:
-                res = ("Win", "Loss")
-            else :
-                res = ("Loss", "Win")
-        else :
-            threshold = team_level / (opponent_level + team_level)
-            rand = np.random.random()   
-            if rand < threshold : 
-                res = ("Win", "Loss")   
-            else : 
-                res = ("Loss", "Win")
-    return res
-
-
-def play_round(league_table, round_number, method = 'probabilistic', verbose = False):
-    
-    if f"R{round_number}_opponent" not in league_table.columns: 
-        raise ValueError(f'The league was initiated with less than {round_number} games')
-    
-    opp_str = f'R{round_number}_opponent'
-    res_str = f'R{round_number}_result'
-    for team in league_table.index:
-        if league_table.loc[team, res_str] == '-':
-            opponent = league_table.loc[team, opp_str]
-            team_level = league_table.loc[team, 'Level']
-            opponent_level = league_table.loc[opponent, 'Level']
-            team_strat_list = league_table.loc[team, 'Strategy']
-            opponent_strat_list = league_table.loc[opponent, 'Strategy']
-            team_strat = 1 if round_number in team_strat_list else 0
-            opponent_strat = 1 if round_number in opponent_strat_list else 0
-            strat = team_strat + opponent_strat
-            result = simulate_game(team_level, opponent_level, team_strat, opponent_strat, method = method, verbose = verbose)
-            league_table.loc[team,res_str] = result[0]
-            league_table.loc[opponent,res_str] = result[1]
-            if result[0] == 'Win':
-                league_table.loc[team,'Nb_win'] +=1
-                winner = team
-            else :
-                league_table.loc[opponent,'Nb_win'] +=1
-                winner = opponent
-            league_table.loc[team,'Nb_games'] +=1
-            league_table.loc[opponent,'Nb_games'] +=1            
-            if (team_level > opponent_level and result[0] == 'Loss') or team_level < opponent_level and result[0] == 'Win':
-                unexpected = True
-            else :
-                unexpected = False
-            
-            if verbose :
-                print(f'Round number {round_number}, game {team} vs {opponent} of levels {np.round(team_level,2)} vs {np.round(opponent_level,2)}: victory for {winner}{" - UNEXPECTED" if unexpected else ""} {" - STRATEGIC " if strat > 0 else ""}')
-
-    league_table['Win_rate'] = league_table['Nb_win'] / league_table['Nb_games']
-    
-    return league_table.sort_values(by='Win_rate', ascending = False)  
-
-
-def simulate_tournament(nb_teams, nb_games, strategies = {}, method = 'probabilistic', delta_level = 'linear', verbose_pairing = True, verbose_game = True):
-
-    gdf, lt = initiate_league(nb_teams,nb_games, delta_level=delta_level,strategies=strategies)
-    for i in range(nb_games):
-        gdf, lt = assign_opponents(gdf,lt,i+1, verbose = verbose_pairing)
-        lt = play_round(lt,i+1, method = method,verbose = verbose_game)
-
-    return lt
-
-
-def simulate_n_tournaments(n_tournaments, nb_teams, nb_games, strategies = {}, method = 'probabilistic', delta_level = 'linear') :
-
-    first = True 
-    
-    for i in range(n_tournaments) :
-        lt = simulate_tournament(nb_teams, nb_games, strategies = strategies, delta_level=delta_level,method = method)
-        if first :
-            out = lt[['Level','Strategy','Win_rate']].rename(columns={'Win_rate':'WR_0'})
-            first = False
-        else :
-            temp_lt = lt[['Win_rate']].rename(columns={'Win_rate':f'WR_{i}'})
-            out = out.merge(temp_lt, left_index=True, right_index=True)
-    out['Avg_WR'] = out.drop(columns = ['Level','Strategy']).mean(axis=1)
-    
-    out = out[['Level','Strategy','Avg_WR']]
-    out = out.round(2)
-    return out.sort_values(by = 'Avg_WR', ascending = False)
-
-
-def compare_settings(n_tournaments, n_teams, n_rounds, delta_level='linear' ,strategies={}, probabilistic=True, deterministic=True):
-    
-    if probabilistic :
-        print('Probabilistic resolution')
-        r = simulate_n_tournaments(n_tournaments,n_teams,n_rounds, delta_level=delta_level, method = 'probabilistic')
-        r.rename(columns = {'Avg_WR': 'Control_avg_WR'}, inplace = True)
-        rs = simulate_n_tournaments(n_tournaments,n_teams,n_rounds, delta_level=delta_level, method = 'probabilistic', strategies = strategies)
-        rs.rename(columns = {'Avg_WR': 'Strategic_avg_WR'}, inplace = True)
-        rs = rs.merge(r['Control_avg_WR'], left_index= True, right_index=True)
-        rs['Delta'] = rs['Strategic_avg_WR'] - rs['Control_avg_WR']
-        display(rs)
-    
-    if probabilistic and deterministic :
-        print('---------------------------------------------------')
-    
-    if deterministic:
-        print('Deterministic resolution')
-        d = simulate_n_tournaments(n_tournaments,n_teams,n_rounds, delta_level=delta_level, method = 'deterministic')
-        d.rename(columns = {'Avg_WR': 'Control_avg_WR'}, inplace = True)
-        ds = simulate_n_tournaments(n_tournaments,n_teams,n_rounds, delta_level=delta_level, method = 'deterministic', strategies = strategies)
-        ds.rename(columns = {'Avg_WR': 'Strategic_avg_WR'}, inplace = True)
-        ds = ds.merge(d['Control_avg_WR'], left_index= True, right_index=True)
-        ds['Delta'] = ds['Strategic_avg_WR'] - ds['Control_avg_WR']
-        display(ds)  
-        
-    if not probabilistic and not deterministic :
-        print('No setting were set to True for comparison')
