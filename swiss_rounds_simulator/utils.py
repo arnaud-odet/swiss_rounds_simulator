@@ -1,8 +1,8 @@
 import pandas as pd
 import numpy as np
 import string
-from swissdutch.dutch import DutchPairingEngine
-from swissdutch.player import Player
+import random
+from swiss_rounds_simulator.mwmatching import maxWeightMatching
 
 
 
@@ -20,9 +20,9 @@ def initiate_league(n_teams, n_rounds, delta_level='linear' ,strategies = {}):
         alphabet = alphabet + [alphabet[i] + elem for elem in  alphabet]
 
     teams = alphabet[:n_teams]
-    tm_nbrs = range(1, n_teams+1)
+    tm_nbrs = range(n_teams)
     
-    calendar_columns = ['Id','Level','Strategy','Nb_win','Nb_games',"Win_rate","OWR"]
+    calendar_columns = ['Id','Level','Strategy','Nb_win','Nb_loss',"Win_rate","OWR"]
     for i in range(n_rounds):
         calendar_columns.append(f"R{i+1}_opponent")
         calendar_columns.append(f"R{i+1}_result")
@@ -46,26 +46,39 @@ def initiate_league(n_teams, n_rounds, delta_level='linear' ,strategies = {}):
     return league_table.round(2)
 
 
-def assign_opponents(league_table:pd.DataFrame, round_number:int):
-    
-    if f"R{round_number}_opponent" not in league_table.columns: 
-        raise ValueError(f'The league was initiated with less than {round_number} games')  
+def assign_opponents(league_table:pd.DataFrame, round_number:int, verbose = True):
 
-    players = []
-    for player in league_table.index :
-        if round_number == 1 :
-            players.append(Player(name = player, rating = league_table.loc[player,'Win_rate'], pairing_no=league_table.loc[player,'Id']))
-        else :
-            opps = []
-            for i in range(1, round_number):
-                opps.append(league_table.loc[league_table.loc[player,f'R{i}_opponent'],'Id'])
-            players.append(Player(name = player, rating = league_table.loc[player,'Win_rate'], pairing_no=league_table.loc[player,'Id'], score = league_table.loc[player,'Nb_win'], opponents=opps))
-    engine = DutchPairingEngine()
-    pairing = engine.pair_round(round_number, players)
-    for game in pairing :
-        league_table.loc[game.name, f'R{round_number}_opponent'] = league_table.query(f"Id == {game.opponents[round_number-1]}").index[0]  
-    
-    return league_table  
+    if round_number == 1:
+        league_table = league_table.sample(frac = 1) 
+    edges = []
+    for a in league_table.index:
+        id_a = league_table.loc[a,'Id']
+        a_past_opp = []
+        for i in range(round_number-1):
+            a_past_opp.append(league_table.loc[a,f"R{i+1}_opponent"])
+        for b in league_table.index:
+            id_b = league_table.loc[b,'Id']
+            if a == b :
+                pass
+            elif b in a_past_opp :
+                edges.append((id_a,id_b,0))
+            else:
+                edges.append((id_a,id_b,10000 - int(np.abs(league_table.loc[a,'Win_rate'] - league_table.loc[b,'Win_rate'])*100)**2)) 
+                
+    pairing = maxWeightMatching(edges, maxcardinality=True)
+
+    for team_id in range(len(pairing)):
+        team = list(league_table.query(f"Id == {team_id}").index)[0]
+        opponent = list(league_table.query(f"Id == {pairing[team_id]}").index)[0]
+        if league_table.loc[team,f"R{round_number}_opponent"] == '-':
+            league_table.loc[team,f"R{round_number}_opponent"] = opponent
+            league_table.loc[opponent,f"R{round_number}_opponent"] = team
+            if verbose :
+                team_record_str = f"({league_table.loc[team,'Nb_win']}-{league_table.loc[team,'Nb_loss']})"
+                opponent_record_str = f"({league_table.loc[opponent,'Nb_win']}-{league_table.loc[opponent,'Nb_loss']})"
+                print(f"Round number {round_number} : Team {team} {team_record_str} was paired with team {opponent} {opponent_record_str}")
+        
+    return league_table
 
 
 def simulate_game(team_level, opponent_level, team_strat = 0, opponent_strat = 0, method = 'probabilistic', verbose = False):
@@ -94,7 +107,7 @@ def simulate_game(team_level, opponent_level, team_strat = 0, opponent_strat = 0
     return res
 
 
-def play_round(league_table, round_number, method = 'probabilistic', verbose = False):
+def play_round(league_table, round_number, method = 'probabilistic', verbose = True):
     
     if f"R{round_number}_opponent" not in league_table.columns: 
         raise ValueError(f'The league was initiated with less than {round_number} games')
@@ -106,8 +119,8 @@ def play_round(league_table, round_number, method = 'probabilistic', verbose = F
             opponent = league_table.loc[team, opp_str]            
             if verbose :
                 # keeping memory of pre-game records
-                team_record_str = f"({league_table.loc[team,'Nb_win']}-{league_table.loc[team,'Nb_games']-league_table.loc[team,'Nb_win']})"
-                opponent_record_str = f"({league_table.loc[opponent,'Nb_win']}-{league_table.loc[opponent,'Nb_games']-league_table.loc[opponent,'Nb_win']})"
+                team_record_str = f"({league_table.loc[team,'Nb_win']}-{league_table.loc[team,'Nb_loss']})"
+                opponent_record_str = f"({league_table.loc[opponent,'Nb_win']}-{league_table.loc[opponent,'Nb_loss']})"
             team_level = league_table.loc[team, 'Level']
             opponent_level = league_table.loc[opponent, 'Level']
             team_strat_list = league_table.loc[team, 'Strategy']
@@ -120,12 +133,12 @@ def play_round(league_table, round_number, method = 'probabilistic', verbose = F
             league_table.loc[opponent,res_str] = result[1]
             if result[0] == 'Win':
                 league_table.loc[team,'Nb_win'] +=1
+                league_table.loc[opponent,'Nb_loss'] +=1
                 winner = team
             else :
                 league_table.loc[opponent,'Nb_win'] +=1
-                winner = opponent
-            league_table.loc[team,'Nb_games'] +=1
-            league_table.loc[opponent,'Nb_games'] +=1            
+                league_table.loc[team,'Nb_loss'] +=1
+                winner = opponent           
             if (team_level > opponent_level and result[0] == 'Loss') or team_level < opponent_level and result[0] == 'Win':
                 unexpected = True
             else :
@@ -134,7 +147,7 @@ def play_round(league_table, round_number, method = 'probabilistic', verbose = F
             if verbose :
                 print(f'Round number {round_number}, game {team} {team_record_str} vs {opponent} {opponent_record_str} of levels {np.round(team_level,2)} vs {np.round(opponent_level,2)}: victory for {winner}{" - UNEXPECTED" if unexpected else ""} {" - STRATEGIC " if strat > 0 else ""}')
 
-    league_table['Win_rate'] = league_table['Nb_win'] / league_table['Nb_games']
+    league_table['Win_rate'] = league_table['Nb_win'] / round_number
     for team in league_table.index :
         opponents_wr = []
         for i in range(round_number):
@@ -148,7 +161,7 @@ def simulate_tournament(nb_teams, nb_games, strategies = {}, method = 'probabili
 
     lt = initiate_league(nb_teams,nb_games, delta_level=delta_level,strategies=strategies)
     for i in range(nb_games):
-        lt = assign_opponents(lt,i+1)
+        lt = assign_opponents(lt,i+1, verbose = False)
         lt = play_round(lt,i+1, method = method,verbose = verbose)
 
     return lt
