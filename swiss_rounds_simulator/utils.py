@@ -4,7 +4,7 @@ import string
 from swissdutch.dutch import DutchPairingEngine
 from swissdutch.player import Player
 
-engine = DutchPairingEngine()
+
 
 def initiate_league(n_teams, n_rounds, delta_level='linear' ,strategies = {}):
     if n_teams % 2 == 1 :
@@ -22,7 +22,7 @@ def initiate_league(n_teams, n_rounds, delta_level='linear' ,strategies = {}):
     teams = alphabet[:n_teams]
     tm_nbrs = range(1, n_teams+1)
     
-    calendar_columns = ['Id','Level','Strategy','Nb_win','Nb_games',"Win_rate"]
+    calendar_columns = ['Id','Level','Strategy','Nb_win','Nb_games',"Win_rate","OWR"]
     for i in range(n_rounds):
         calendar_columns.append(f"R{i+1}_opponent")
         calendar_columns.append(f"R{i+1}_result")
@@ -34,7 +34,7 @@ def initiate_league(n_teams, n_rounds, delta_level='linear' ,strategies = {}):
     elif delta_level =='exponential':
         for j in range(n_teams):
             levels.append( (1 / 2)**j )
-    init_cal = [tm_nbrs] + [levels] + [[[]]*n_teams] + [[0]*n_teams] * 3 + ([['-']*n_teams] * (2*n_rounds))
+    init_cal = [tm_nbrs] + [levels] + [[[]]*n_teams] + [[0]*n_teams] * 4 + ([['-']*n_teams] * (2*n_rounds))
     league_table = pd.DataFrame(init_cal, index= calendar_columns, columns = teams).transpose()
     
     for strat in strategies.keys():
@@ -60,6 +60,7 @@ def assign_opponents(league_table:pd.DataFrame, round_number:int):
             for i in range(1, round_number):
                 opps.append(league_table.loc[league_table.loc[player,f'R{i}_opponent'],'Id'])
             players.append(Player(name = player, rating = league_table.loc[player,'Win_rate'], pairing_no=league_table.loc[player,'Id'], score = league_table.loc[player,'Nb_win'], opponents=opps))
+    engine = DutchPairingEngine()
     pairing = engine.pair_round(round_number, players)
     for game in pairing :
         league_table.loc[game.name, f'R{round_number}_opponent'] = league_table.query(f"Id == {game.opponents[round_number-1]}").index[0]  
@@ -134,8 +135,13 @@ def play_round(league_table, round_number, method = 'probabilistic', verbose = F
                 print(f'Round number {round_number}, game {team} {team_record_str} vs {opponent} {opponent_record_str} of levels {np.round(team_level,2)} vs {np.round(opponent_level,2)}: victory for {winner}{" - UNEXPECTED" if unexpected else ""} {" - STRATEGIC " if strat > 0 else ""}')
 
     league_table['Win_rate'] = league_table['Nb_win'] / league_table['Nb_games']
+    for team in league_table.index :
+        opponents_wr = []
+        for i in range(round_number):
+            opponents_wr.append(league_table.loc[league_table.loc[team, f"R{i+1}_opponent"],'Win_rate'])
+        league_table.loc[team,'OWR'] = sum(opponents_wr) / len(opponents_wr)
     
-    return league_table.sort_values(by='Win_rate', ascending = False)  
+    return league_table.sample(frac=1).sort_values(by=['Win_rate','OWR'], ascending = False)  
 
 
 def simulate_tournament(nb_teams, nb_games, strategies = {}, method = 'probabilistic', delta_level = 'linear', verbose = True):
