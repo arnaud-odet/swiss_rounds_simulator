@@ -157,13 +157,81 @@ def play_round(league_table, round_number, method = 'probabilistic', verbose = T
     return league_table.sample(frac=1).sort_values(by=['Win_rate','OWR'], ascending = False)  
 
 
+def rank_table(league_table:pd.DataFrame, n_rounds:int, verbose=True):
+    if 'Rank' not in league_table.columns:
+        league_table['Rank'] = [0] * league_table.shape[0]
+
+    init_ranks = league_table['Rank']
+    keep_ranking=True
+    use_OWR = False
+    j = 1
+    
+    while keep_ranking:
+        multi_given_ranks = init_ranks.value_counts()[init_ranks.value_counts()>1].index     
+        n_unranked_init = init_ranks.value_counts()[init_ranks.value_counts()>1].sum()
+        if verbose :
+            print(f"Iteration number {j}, {use_OWR=}, number of unranked teams = {n_unranked_init} ")
+        for initial_rank in multi_given_ranks :
+            subcomp_df = league_table.query(f"Rank =={initial_rank}")
+            subcomps = []
+            for score in subcomp_df['Nb_win'].unique():
+                subtable = subcomp_df.query(f"Nb_win == {score}")
+                for team in subtable.index:
+                    team_subcomp_games = []
+                    for i in range(n_rounds):
+                        opponent = subcomp_df.loc[team,f'R{i+1}_opponent']
+                        if opponent in subtable.index:
+                            result = subcomp_df.loc[team,f'R{i+1}_result']
+                            team_subcomp_games.append(1 if result == 'Win' else 0)
+                    team_subscore = np.mean(team_subcomp_games) if len(team_subcomp_games) >0 else 0.5
+                    subcomps.append({'team':team, 'subscore':team_subscore})
+            tmp_df = pd.DataFrame(subcomps).set_index('team')
+            subcomp_df = subcomp_df.merge(tmp_df, left_index=True, right_index=True)
+            subcomp_df['tmp_rank'] = 1000000 * subcomp_df['Nb_win'] + 1000 * subcomp_df['subscore'] + (subcomp_df['OWR'] if use_OWR else 0)
+            if verbose :
+                print('Working on subgroup')    
+                display(subcomp_df)
+            r_df = subcomp_df['tmp_rank'].sort_values(ascending=False).drop_duplicates().reset_index().drop(columns = 'index').reset_index().set_index('tmp_rank')
+            for team in subcomp_df.index:   
+                league_table.loc[team,'Rank'] = r_df.loc[subcomp_df.loc[team,'tmp_rank'],'index'] + initial_rank
+        # re-rank
+        re_rank_dict = {}
+        for rank in league_table['Rank']:
+            rank_restated = league_table.query(f"Rank < {rank}").shape[0]
+            re_rank_dict[rank] = rank_restated
+        league_table['Rank'] = league_table['Rank'].map(re_rank_dict)
+        
+        final_ranks = league_table['Rank']
+        n_unranked_final = final_ranks.value_counts()[final_ranks.value_counts()>1].sum()
+        if n_unranked_init == n_unranked_final:
+            if verbose :
+                print("Test on ranks = True")
+            if use_OWR :
+                keep_ranking = False
+            else :
+                use_OWR = True
+                init_ranks = final_ranks    
+                j+=1
+        else :
+            if verbose :
+                print("Test on ranks = False")
+            init_ranks = final_ranks    
+            j+=1
+
+    league_table.sort_values(by='Rank', inplace = True)
+    league_table['Rank'] = league_table['Rank'] +1
+    league_table['Win_rate'] = league_table['Win_rate'].apply(lambda x:np.round(x,2))
+    league_table['OWR'] = league_table['OWR'].apply(lambda x:np.round(x,2))
+    return league_table
+
+
 def simulate_tournament(nb_teams, nb_games, strategies = {}, method = 'probabilistic', delta_level = 'linear', verbose = True):
 
     lt = initiate_league(nb_teams,nb_games, delta_level=delta_level,strategies=strategies)
     for i in range(nb_games):
         lt = assign_opponents(lt,i+1, verbose = False)
         lt = play_round(lt,i+1, method = method,verbose = verbose)
-
+    lt = rank_table(lt,nb_games, verbose = False)
     return lt
 
 
