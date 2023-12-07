@@ -3,3 +3,5 @@ numpy == 1.26.1
 swissdutch
 ipython
 ipykernel
+matplotlib
+seaborn

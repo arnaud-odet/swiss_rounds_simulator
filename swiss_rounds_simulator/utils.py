@@ -242,16 +242,20 @@ def simulate_n_tournaments(n_tournaments, nb_teams, nb_games, strategies = {}, m
     for i in range(n_tournaments) :
         lt = simulate_tournament(nb_teams, nb_games, strategies = strategies, delta_level=delta_level,method = method, verbose = False)
         if first :
-            out = lt[['Level','Strategy','Win_rate']].rename(columns={'Win_rate':'WR_0'})
+            wr_df = lt[['Level','Strategy','Win_rate']].rename(columns={'Win_rate':'WR_0'})
+            rk_df = lt[['Rank']].rename(columns={'Rank':'Rank_0'})
             first = False
         else :
-            temp_lt = lt[['Win_rate']].rename(columns={'Win_rate':f'WR_{i}'})
-            out = out.merge(temp_lt, left_index=True, right_index=True)
-    out['Avg_WR'] = out.drop(columns = ['Level','Strategy']).mean(axis=1)
-    
-    out = out[['Level','Strategy','Avg_WR']]
-    out = out.round(2)
-    return out.sort_values(by = 'Avg_WR', ascending = False)
+            temp_wr = lt[['Win_rate']].rename(columns={'Win_rate':f'WR_{i}'})
+            temp_rk = lt[['Rank']].rename(columns={'Rank':f'Rank_{i}'})
+            wr_df = wr_df.merge(temp_wr, left_index=True, right_index=True)
+            rk_df = rk_df.merge(temp_rk, left_index=True, right_index=True)
+    wr_df['Avg_WR'] = wr_df.drop(columns = ['Level','Strategy']).mean(axis=1)
+    rk_df['Avg_Rank'] = rk_df.mean(axis=1)
+    output = wr_df[['Level','Strategy','Avg_WR']].merge(rk_df[['Avg_Rank']], left_index=True, right_index=True)
+    output = output.round(2)
+    output['Level'] = output['Level'].apply(lambda x:np.round(x,2))
+    return output.sort_values(by = 'Avg_Rank', ascending = True)
 
 
 def compare_settings(n_tournaments, n_teams, n_rounds, delta_level='linear' ,strategies={}, probabilistic=True, deterministic=True):
@@ -259,12 +263,13 @@ def compare_settings(n_tournaments, n_teams, n_rounds, delta_level='linear' ,str
     if probabilistic :
         print('Probabilistic resolution')
         r = simulate_n_tournaments(n_tournaments,n_teams,n_rounds, delta_level=delta_level, method = 'probabilistic')
-        r.rename(columns = {'Avg_WR': 'Control_avg_WR'}, inplace = True)
+        r.rename(columns = {'Avg_WR': 'Control_avg_WR', 'Avg_Rank': 'Control_avg_Rank'}, inplace = True)
         rs = simulate_n_tournaments(n_tournaments,n_teams,n_rounds, delta_level=delta_level, method = 'probabilistic', strategies = strategies)
-        rs.rename(columns = {'Avg_WR': 'Strategic_avg_WR'}, inplace = True)
-        rs = rs.merge(r['Control_avg_WR'], left_index= True, right_index=True)
-        rs['Delta'] = rs['Strategic_avg_WR'] - rs['Control_avg_WR']
-        display(rs)
+        rs.rename(columns = {'Avg_WR': 'Strategic_avg_WR', 'Avg_Rank': 'Strategic_avg_Rank'}, inplace = True)
+        rs = rs.merge(r[['Control_avg_WR', 'Control_avg_Rank']], left_index= True, right_index=True)
+        rs['Delta_WR'] = rs['Strategic_avg_WR'] - rs['Control_avg_WR']
+        rs['Delta_Rank'] = rs['Strategic_avg_Rank'] - rs['Control_avg_Rank']
+        display(rs.round(2))
     
     if probabilistic and deterministic :
         print('---------------------------------------------------')
@@ -272,11 +277,12 @@ def compare_settings(n_tournaments, n_teams, n_rounds, delta_level='linear' ,str
     if deterministic:
         print('Deterministic resolution')
         d = simulate_n_tournaments(n_tournaments,n_teams,n_rounds, delta_level=delta_level, method = 'deterministic')
-        d.rename(columns = {'Avg_WR': 'Control_avg_WR'}, inplace = True)
+        d.rename(columns = {'Avg_WR': 'Control_avg_WR', 'Avg_Rank': 'Control_avg_Rank'}, inplace = True)
         ds = simulate_n_tournaments(n_tournaments,n_teams,n_rounds, delta_level=delta_level, method = 'deterministic', strategies = strategies)
-        ds.rename(columns = {'Avg_WR': 'Strategic_avg_WR'}, inplace = True)
-        ds = ds.merge(d['Control_avg_WR'], left_index= True, right_index=True)
-        ds['Delta'] = ds['Strategic_avg_WR'] - ds['Control_avg_WR']
+        ds.rename(columns = {'Avg_WR': 'Control_avg_WR', 'Avg_Rank': 'Control_avg_Rank'}, inplace = True)
+        ds = ds.merge(d[['Control_avg_WR', 'Control_Avg_Rank']], left_index= True, right_index=True)
+        ds['Delta_WR'] = ds['Strategic_avg_WR'] - ds['Control_avg_WR']
+        ds['Delta_Rank'] = ds['Strategic_avg_Rank'] - ds['Control_avg_Rank']
         display(ds)  
         
     if not probabilistic and not deterministic :
