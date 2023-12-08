@@ -24,8 +24,8 @@ def initiate_league(n_teams, n_rounds, delta_level='linear' ,strategies = {}):
     
     calendar_columns = ['Id','Level','Strategy','Nb_win','Nb_loss',"Win_rate","OWR"]
     for i in range(n_rounds):
-        calendar_columns.append(f"R{i+1}_opponent")
-        calendar_columns.append(f"R{i+1}_result")
+        calendar_columns.append(f"R{i+1}_opp")
+        calendar_columns.append(f"R{i+1}_res")
     
     levels = []
     if delta_level == 'linear':
@@ -55,7 +55,7 @@ def assign_opponents(league_table:pd.DataFrame, round_number:int, verbose = True
         id_a = league_table.loc[a,'Id']
         a_past_opp = []
         for i in range(round_number-1):
-            a_past_opp.append(league_table.loc[a,f"R{i+1}_opponent"])
+            a_past_opp.append(league_table.loc[a,f"R{i+1}_opp"])
         for b in league_table.index:
             id_b = league_table.loc[b,'Id']
             if a == b :
@@ -70,9 +70,9 @@ def assign_opponents(league_table:pd.DataFrame, round_number:int, verbose = True
     for team_id in range(len(pairing)):
         team = list(league_table.query(f"Id == {team_id}").index)[0]
         opponent = list(league_table.query(f"Id == {pairing[team_id]}").index)[0]
-        if league_table.loc[team,f"R{round_number}_opponent"] == '-':
-            league_table.loc[team,f"R{round_number}_opponent"] = opponent
-            league_table.loc[opponent,f"R{round_number}_opponent"] = team
+        if league_table.loc[team,f"R{round_number}_opp"] == '-':
+            league_table.loc[team,f"R{round_number}_opp"] = opponent
+            league_table.loc[opponent,f"R{round_number}_opp"] = team
             if verbose :
                 team_record_str = f"({league_table.loc[team,'Nb_win']}-{league_table.loc[team,'Nb_loss']})"
                 opponent_record_str = f"({league_table.loc[opponent,'Nb_win']}-{league_table.loc[opponent,'Nb_loss']})"
@@ -109,11 +109,11 @@ def simulate_game(team_level, opponent_level, team_strat = 0, opponent_strat = 0
 
 def play_round(league_table, round_number, method = 'probabilistic', verbose = True):
     
-    if f"R{round_number}_opponent" not in league_table.columns: 
+    if f"R{round_number}_opp" not in league_table.columns: 
         raise ValueError(f'The league was initiated with less than {round_number} games')
     
-    opp_str = f'R{round_number}_opponent'
-    res_str = f'R{round_number}_result'
+    opp_str = f'R{round_number}_opp'
+    res_str = f'R{round_number}_res'
     for team in league_table.index:
         if league_table.loc[team, res_str] == '-':
             opponent = league_table.loc[team, opp_str]            
@@ -151,7 +151,7 @@ def play_round(league_table, round_number, method = 'probabilistic', verbose = T
     for team in league_table.index :
         opponents_wr = []
         for i in range(round_number):
-            opponents_wr.append(league_table.loc[league_table.loc[team, f"R{i+1}_opponent"],'Win_rate'])
+            opponents_wr.append(league_table.loc[league_table.loc[team, f"R{i+1}_opp"],'Win_rate'])
         league_table.loc[team,'OWR'] = sum(opponents_wr) / len(opponents_wr)
     
     return league_table.sample(frac=1).sort_values(by=['Win_rate','OWR'], ascending = False)  
@@ -179,9 +179,9 @@ def rank_table(league_table:pd.DataFrame, n_rounds:int, verbose=True):
                 for team in subtable.index:
                     team_subcomp_games = []
                     for i in range(n_rounds):
-                        opponent = subcomp_df.loc[team,f'R{i+1}_opponent']
+                        opponent = subcomp_df.loc[team,f'R{i+1}_opp']
                         if opponent in subtable.index:
-                            result = subcomp_df.loc[team,f'R{i+1}_result']
+                            result = subcomp_df.loc[team,f'R{i+1}_res']
                             team_subcomp_games.append(1 if result == 'Win' else 0)
                     team_subscore = np.mean(team_subcomp_games) if len(team_subcomp_games) >0 else 0.5
                     subcomps.append({'team':team, 'subscore':team_subscore})
@@ -278,8 +278,8 @@ def compare_settings(n_tournaments, n_teams, n_rounds, delta_level='linear' ,str
         d = simulate_n_tournaments(n_tournaments,n_teams,n_rounds, delta_level=delta_level, method = 'deterministic')
         d.rename(columns = {'Avg_WR': 'Control_avg_WR', 'Avg_Rank': 'Control_avg_Rank'}, inplace = True)
         ds = simulate_n_tournaments(n_tournaments,n_teams,n_rounds, delta_level=delta_level, method = 'deterministic', strategies = strategies)
-        ds.rename(columns = {'Avg_WR': 'Control_avg_WR', 'Avg_Rank': 'Control_avg_Rank'}, inplace = True)
-        ds = ds.merge(d[['Control_avg_WR', 'Control_Avg_Rank']], left_index= True, right_index=True)
+        ds.rename(columns = {'Avg_WR': 'Strategic_avg_WR', 'Avg_Rank': 'Strategic_avg_Rank'}, inplace = True)
+        ds = ds.merge(d[['Control_avg_WR', 'Control_avg_Rank']], left_index= True, right_index=True)
         ds['Delta_WR'] = ds['Strategic_avg_WR'] - ds['Control_avg_WR']
         ds['Delta_Rank'] = ds['Strategic_avg_Rank'] - ds['Control_avg_Rank']
         display(ds.round(2))  
@@ -290,7 +290,7 @@ def compare_settings(n_tournaments, n_teams, n_rounds, delta_level='linear' ,str
         
 def DEPRECATED_assign_opponents(possible_games_matrix, league_table, round_number, verbose = False):
     
-    if f"R{round_number}_opponent" not in league_table.columns: 
+    if f"R{round_number}_opp" not in league_table.columns: 
         raise ValueError(f'The league was initiated with less than {round_number} games')
     
     ref_str = f'R{round_number}_opponent'
