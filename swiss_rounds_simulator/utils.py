@@ -253,7 +253,6 @@ def simulate_n_tournaments(n_tournaments, nb_teams, nb_games, strategies = {}, m
     wr_df['Avg_WR'] = wr_df.drop(columns = ['Level','Strategy']).mean(axis=1)
     rk_df['Avg_Rank'] = rk_df.mean(axis=1)
     output = wr_df[['Level','Strategy','Avg_WR']].merge(rk_df[['Avg_Rank']], left_index=True, right_index=True)
-    output = output.round(2)
     output['Level'] = output['Level'].apply(lambda x:np.round(x,2))
     return output.sort_values(by = 'Avg_Rank', ascending = True)
 
@@ -283,7 +282,7 @@ def compare_settings(n_tournaments, n_teams, n_rounds, delta_level='linear' ,str
         ds = ds.merge(d[['Control_avg_WR', 'Control_Avg_Rank']], left_index= True, right_index=True)
         ds['Delta_WR'] = ds['Strategic_avg_WR'] - ds['Control_avg_WR']
         ds['Delta_Rank'] = ds['Strategic_avg_Rank'] - ds['Control_avg_Rank']
-        display(ds)  
+        display(ds.round(2))  
         
     if not probabilistic and not deterministic :
         print('No setting were set to True for comparison')
