@@ -232,17 +232,18 @@ def simulate_tournament(nb_teams, nb_games, strategies = {}, method = 'probabili
         lt = assign_opponents(lt,i+1, verbose = False)
         lt = play_round(lt,i+1, method = method,verbose = verbose)
     lt = rank_table(lt,nb_games, verbose = False)
+    lt['Id'] = lt['Id'] + 1 
     return lt
 
 
-def simulate_n_tournaments(n_tournaments, nb_teams, nb_games, strategies = {}, method = 'probabilistic', delta_level = 'linear') :
+def simulate_n_tournaments(n_tournaments, nb_teams, nb_games, thresholds = [] ,strategies = {}, method = 'probabilistic', delta_level = 'linear') :
 
     first = True 
     
     for i in range(n_tournaments) :
         lt = simulate_tournament(nb_teams, nb_games, strategies = strategies, delta_level=delta_level,method = method, verbose = False)
         if first :
-            wr_df = lt[['Level','Strategy','Win_rate']].rename(columns={'Win_rate':'WR_0'})
+            wr_df = lt[['Id','Level','Strategy','Win_rate']].rename(columns={'Win_rate':'WR_0'})
             rk_df = lt[['Rank']].rename(columns={'Rank':'Rank_0'})
             first = False
         else :
@@ -252,9 +253,15 @@ def simulate_n_tournaments(n_tournaments, nb_teams, nb_games, strategies = {}, m
             rk_df = rk_df.merge(temp_rk, left_index=True, right_index=True)
     wr_df['Avg_WR'] = wr_df.drop(columns = ['Level','Strategy']).mean(axis=1)
     rk_df['Avg_Rank'] = rk_df.mean(axis=1)
-    output = wr_df[['Level','Strategy','Avg_WR']].merge(rk_df[['Avg_Rank']], left_index=True, right_index=True)
+    thres_list = ['Thres_' + str(n) for n in thresholds]
+    rank_list = ['Rank_' + str(j) for j in range(nb_games)]
+    for thres_str, threshold in zip(thres_list,thresholds): 
+        rk_df[thres_str] = [(rk_df[rank_list].loc[ind]<=threshold).sum() / n_tournaments for ind in rk_df.index]
+        
+    output = wr_df[['Id','Level','Strategy','Avg_WR']].merge(rk_df[['Avg_Rank']+ thres_list], left_index=True, right_index=True)
     output['Level'] = output['Level'].apply(lambda x:np.round(x,2))
-    return output.sort_values(by = 'Avg_Rank', ascending = True)
+    
+    return output.sort_values(by = 'Id', ascending = True)
 
 
 def compare_settings(n_tournaments, n_teams, n_rounds, delta_level='linear' ,strategies={}, probabilistic=True, deterministic=True):
