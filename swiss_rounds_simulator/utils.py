@@ -1,7 +1,6 @@
 import pandas as pd
 import numpy as np
 import string
-import random
 from swiss_rounds_simulator.mwmatching import maxWeightMatching
 
 
@@ -251,10 +250,11 @@ def simulate_n_tournaments(n_tournaments, nb_teams, nb_games, thresholds = [] ,s
             temp_rk = lt[['Rank']].rename(columns={'Rank':f'Rank_{i}'})
             wr_df = wr_df.merge(temp_wr, left_index=True, right_index=True)
             rk_df = rk_df.merge(temp_rk, left_index=True, right_index=True)
-    wr_df['Avg_WR'] = wr_df.drop(columns = ['Level','Strategy']).mean(axis=1)
+    
+    wr_df['Avg_WR'] = wr_df.drop(columns = ['Id','Level','Strategy']).mean(axis=1)
     rk_df['Avg_Rank'] = rk_df.mean(axis=1)
     thres_list = ['Thres_' + str(n) for n in thresholds]
-    rank_list = ['Rank_' + str(j) for j in range(nb_games)]
+    rank_list = ['Rank_' + str(j) for j in range(n_tournaments)]
     for thres_str, threshold in zip(thres_list,thresholds): 
         rk_df[thres_str] = [(rk_df[rank_list].loc[ind]<=threshold).sum() / n_tournaments for ind in rk_df.index]
         

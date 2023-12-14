@@ -24,6 +24,8 @@ def run_simulations(n_tournaments:int, n_teams:int, n_rounds:int, thresholds:lis
     # Step 3 : preparing the DF to be merged
     df.drop(columns = ['Strategy'], inplace = True)
     control_rename_dict = {col_name: 'control_'+ col_name for col_name in df.columns}
+    control_rename_dict['Id'] = 'Id'
+    control_rename_dict['Level'] = 'Level'
     df.rename(columns = control_rename_dict, inplace = True)  
       
     cols_to_duplicate = ['Avg_WR','Avg_Rank'] + ['Thres_' + str(k) for k in thresholds]
@@ -46,19 +48,22 @@ def run_simulations(n_tournaments:int, n_teams:int, n_rounds:int, thresholds:lis
             if verbose:
                 print(f"{verbose_prompt} - Number of simulations to perform : {n_simu_tot} - Number of simulations performed : {n_simu_done} ({np.round(100*n_simu_done/n_simu_tot,1)}%) ")
     
-    return df.sort_index()
+    return df.sort_values(by='Id')
 
 if __name__ == '__main__':
     
-    nb_tourn = 2
+    filepath = '/home/admin/code/arnaud-odet/2_projets/swiss_rounds/data/'
+    
+    nb_tourn = 20
     nb_teams = 36
     nb_games = 8
     thresholds = [8,24]
     possible_strats = [1,2,3]
     setups = [('probabilistic','linear','prob_lin'),('probabilistic','exponential', 'prob_exp'),('deterministic','linear','deter')]
     
-    for setup in setups :
-        filepath = setup[2] + '_T=' + str(nb_teams) + '_R=' + str(nb_games)
+    for i,setup in enumerate(setups) :
+        filename = filepath + setup[2] + '_T=' + str(nb_teams) + '_R=' + str(nb_games)
+        prompt_str = f"{setup[2]} ({i+1} out of {len(setups)})"
         out = run_simulations(
             n_tournaments=nb_tourn,
             n_teams=nb_teams,
@@ -67,6 +72,7 @@ if __name__ == '__main__':
             possible_strategies=possible_strats,
             method=setup[0],
             delta_level=setup[1],
-            verbose_prompt=setup[2]
+            verbose_prompt=prompt_str
         )
+        out.to_csv(filename+'.csv',index_label='team')
     
