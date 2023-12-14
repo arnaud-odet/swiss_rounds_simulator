@@ -54,25 +54,29 @@ if __name__ == '__main__':
     
     filepath = '/home/admin/code/arnaud-odet/2_projets/swiss_rounds/data/'
     
-    nb_tourn = 2000
-    nb_teams = 36
-    nb_games = 8
-    thresholds = [8,24]
+    nb_tourn = 5
+    poss_nb_teams = [16, 18, 36]
+    poss_nb_games = [6, 6, 8]
+    poss_thresholds = [ [8], [4,12] , [8,24]]
     possible_strats = [1,2,3]
-    setups = [('probabilistic','linear','prob_lin'),('probabilistic','exponential', 'prob_exp'),('deterministic','linear','deter')]
+    setups = [('probabilistic','linear','prob_lin'),('probabilistic','exponential', 'prob_exp'),('deterministic','linear','deterministic')]
     
-    for i,setup in enumerate(setups) :
-        filename = filepath + setup[2] + '_T=' + str(nb_teams) + '_R=' + str(nb_games)
-        prompt_str = f"{setup[2]} ({i+1} out of {len(setups)})"
-        out = run_simulations(
-            n_tournaments=nb_tourn,
-            n_teams=nb_teams,
-            n_rounds=nb_games,
-            thresholds=thresholds,
-            possible_strategies=possible_strats,
-            method=setup[0],
-            delta_level=setup[1],
-            verbose_prompt=prompt_str
-        )
-        out.to_csv(filename+'.csv',index_label='team')
+    nb_batchs = len(poss_nb_teams) * len(setups)
+    
+    for k, nb_teams, nb_games, thresholds in zip(range(nb_batchs), poss_nb_teams, poss_nb_games, poss_thresholds):
+    
+        for i,setup in enumerate(setups) :
+            filename = filepath + 'S=' + str(nb_tourn) + '_T=' + str(nb_teams) + '_R=' + str(nb_games) + '_' + setup[2] 
+            prompt_str = f"Batch {k * len(setups) + i + 1} out of {nb_batchs} ({np.round(100*   (k*len(setups)+i)/nb_batchs,1)}% completed) - Teams : {nb_teams}, rounds : {nb_games}, set-up : {setup[2]} "
+            out = run_simulations(
+                n_tournaments=nb_tourn,
+                n_teams=nb_teams,
+                n_rounds=nb_games,
+                thresholds=thresholds,
+                possible_strategies=possible_strats,
+                method=setup[0],
+                delta_level=setup[1],
+                verbose_prompt=prompt_str
+            )
+            out.to_csv(filename+'.csv',index_label='team')
     
