@@ -54,10 +54,10 @@ if __name__ == '__main__':
     
     filepath = '/home/admin/code/arnaud-odet/2_projets/swiss_rounds/data/'
     
-    nb_tourn = 5
+    nb_tourn = 100
     poss_nb_teams = [16, 18, 36]
     poss_nb_games = [6, 6, 8]
-    poss_thresholds = [ [8], [4,12] , [8,24]]
+    poss_thresholds = [[8], [4,12] , [8,24]]
     possible_strats = [1,2,3]
     setups = [('probabilistic','linear','prob_lin'),('probabilistic','exponential', 'prob_exp'),('deterministic','linear','deterministic')]
     
