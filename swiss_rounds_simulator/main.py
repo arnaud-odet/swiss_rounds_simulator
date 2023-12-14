@@ -54,7 +54,7 @@ if __name__ == '__main__':
     
     filepath = '/home/admin/code/arnaud-odet/2_projets/swiss_rounds/data/'
     
-    nb_tourn = 20
+    nb_tourn = 2000
     nb_teams = 36
     nb_games = 8
     thresholds = [8,24]
