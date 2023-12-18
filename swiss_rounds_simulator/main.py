@@ -1,9 +1,9 @@
 import pandas as pd 
 import numpy as np
 import string
-from swiss_rounds_simulator.utils import simulate_n_tournaments
+from swiss_rounds_simulator.utils import simulate_n_tournaments, ray_simulate_n_tournaments
 
-def run_simulations(n_tournaments:int, n_teams:int, n_rounds:int, thresholds:list=[],  possible_strategies = [], method = 'probabilistic', delta_level='linear', verbose = True, verbose_prompt=''):
+def run_simulations(n_tournaments:int, n_teams:int, n_rounds:int, thresholds:list=[],  possible_strategies = [], method = 'probabilistic', delta_level='linear', parallelize= False, verbose = True, verbose_prompt=''):
     
     n_simu_tot = n_tournaments * (n_teams * len(possible_strategies) +1)
     n_simu_done = 0
@@ -16,7 +16,10 @@ def run_simulations(n_tournaments:int, n_teams:int, n_rounds:int, thresholds:lis
     teams = alphabet[:n_teams]
     
     # Step 2 : runing the control simulations
-    df = simulate_n_tournaments(n_tournaments=n_tournaments, nb_teams=n_teams, nb_games=n_rounds, thresholds=thresholds ,strategies={}, method = method, delta_level=delta_level)
+    if parallelize:
+        df = ray_simulate_n_tournaments(n_tournaments=n_tournaments, nb_teams=n_teams, nb_games=n_rounds, thresholds=thresholds ,strategies={}, method = method, delta_level=delta_level)
+    else :
+        df = simulate_n_tournaments(n_tournaments=n_tournaments, nb_teams=n_teams, nb_games=n_rounds, thresholds=thresholds ,strategies={}, method = method, delta_level=delta_level)
     n_simu_done += n_tournaments
     if verbose:
         print(f"{verbose_prompt} - Number of simulations to perform : {n_simu_tot} - Number of simulations performed : {n_simu_done} ({np.round(100*n_simu_done/n_simu_tot,1)}%) ")
@@ -41,7 +44,10 @@ def run_simulations(n_tournaments:int, n_teams:int, n_rounds:int, thresholds:lis
             
         for strat_id, strategy in zip(possible_strategies,strategies) : 
             col_id = 'S_L' + str(strat_id) + '_'
-            tmp_df = simulate_n_tournaments(n_tournaments=n_tournaments, nb_teams=n_teams, nb_games=n_rounds, thresholds=thresholds ,strategies=strategy, method = method, delta_level=delta_level)
+            if parallelize:
+                tmp_df = ray_simulate_n_tournaments(n_tournaments=n_tournaments, nb_teams=n_teams, nb_games=n_rounds, thresholds=thresholds ,strategies=strategy, method = method, delta_level=delta_level)
+            else :
+                tmp_df = simulate_n_tournaments(n_tournaments=n_tournaments, nb_teams=n_teams, nb_games=n_rounds, thresholds=thresholds ,strategies=strategy, method = method, delta_level=delta_level)
             for col in cols_to_duplicate :
                 df.loc[team, col_id+col] = tmp_df.loc[team, col]
             n_simu_done += n_tournaments
@@ -55,9 +61,9 @@ if __name__ == '__main__':
     filepath = '/home/admin/code/arnaud-odet/2_projets/swiss_rounds/data/'
     
     nb_tourn = 100
-    poss_nb_teams = [16, 18, 36]
-    poss_nb_games = [6, 6, 8]
-    poss_thresholds = [[8], [4,12] , [8,24]]
+    poss_nb_teams = [16,18,36]
+    poss_nb_games = [6,6,8]
+    poss_thresholds = [[8],[4,12],[8,24]]
     possible_strats = [1,2,3]
     setups = [('probabilistic','linear','prob_lin'),('probabilistic','exponential', 'prob_exp'),('deterministic','linear','deterministic')]
     
@@ -75,6 +81,7 @@ if __name__ == '__main__':
                 thresholds=thresholds,
                 possible_strategies=possible_strats,
                 method=setup[0],
+                parallelize=True,
                 delta_level=setup[1],
                 verbose_prompt=prompt_str
             )

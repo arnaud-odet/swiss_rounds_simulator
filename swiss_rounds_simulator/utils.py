@@ -2,7 +2,8 @@ import pandas as pd
 import numpy as np
 import string
 from swiss_rounds_simulator.mwmatching import maxWeightMatching
-
+import ray
+import logging
 
 
 def initiate_league(n_teams, n_rounds, delta_level='linear' ,strategies = {}):
@@ -241,6 +242,45 @@ def simulate_n_tournaments(n_tournaments, nb_teams, nb_games, thresholds = [] ,s
     
     for i in range(n_tournaments) :
         lt = simulate_tournament(nb_teams, nb_games, strategies = strategies, delta_level=delta_level,method = method, verbose = False)
+        if first :
+            wr_df = lt[['Id','Level','Strategy','Win_rate']].rename(columns={'Win_rate':'WR_0'})
+            rk_df = lt[['Rank']].rename(columns={'Rank':'Rank_0'})
+            first = False
+        else :
+            temp_wr = lt[['Win_rate']].rename(columns={'Win_rate':f'WR_{i}'})
+            temp_rk = lt[['Rank']].rename(columns={'Rank':f'Rank_{i}'})
+            wr_df = wr_df.merge(temp_wr, left_index=True, right_index=True)
+            rk_df = rk_df.merge(temp_rk, left_index=True, right_index=True)
+    
+    wr_df['Avg_WR'] = wr_df.drop(columns = ['Id','Level','Strategy']).mean(axis=1)
+    rk_df['Avg_Rank'] = rk_df.mean(axis=1)
+    thres_list = ['Thres_' + str(n) for n in thresholds]
+    rank_list = ['Rank_' + str(j) for j in range(n_tournaments)]
+    for thres_str, threshold in zip(thres_list,thresholds): 
+        rk_df[thres_str] = [(rk_df[rank_list].loc[ind]<=threshold).sum() / n_tournaments for ind in rk_df.index]
+        
+    output = wr_df[['Id','Level','Strategy','Avg_WR']].merge(rk_df[['Avg_Rank']+ thres_list], left_index=True, right_index=True)
+    output['Level'] = output['Level'].apply(lambda x:np.round(x,2))
+    
+    return output.sort_values(by = 'Id', ascending = True)
+
+
+def ray_simulate_n_tournaments(n_tournaments, nb_teams, nb_games, thresholds = [] ,strategies = {}, method = 'probabilistic', delta_level = 'linear') :
+
+    first = True 
+    
+    ray.init(configure_logging=True, logging_level = logging.CRITICAL)
+    
+    @ray.remote
+    def ray_simulate_tournament(tournament_index):
+        lt = simulate_tournament(nb_teams, nb_games, strategies = strategies, delta_level=delta_level,method = method, verbose = False)
+        return lt
+    
+    lt_results = ray.get([ray_simulate_tournament.remote(i) for i in range(n_tournaments)])
+    
+    ray.shutdown()
+    
+    for i, lt in enumerate(lt_results) :
         if first :
             wr_df = lt[['Id','Level','Strategy','Win_rate']].rename(columns={'Win_rate':'WR_0'})
             rk_df = lt[['Rank']].rename(columns={'Rank':'Rank_0'})
