@@ -1,6 +1,7 @@
 import pandas as pd 
 import numpy as np
 import string
+import os
 from swiss_rounds_simulator.utils import simulate_n_tournaments, ray_simulate_n_tournaments
 
 def run_simulations(n_tournaments:int, n_teams:int, n_rounds:int, thresholds:list=[],  possible_strategies = [], method = 'probabilistic', delta_level='linear', parallelize= False, verbose = True, verbose_prompt=''):
@@ -58,7 +59,7 @@ def run_simulations(n_tournaments:int, n_teams:int, n_rounds:int, thresholds:lis
 
 if __name__ == '__main__':
     
-    filepath = '/home/admin/code/arnaud-odet/2_projets/swiss_rounds/data/'
+    filepath = os.getcwd() + '/data/'
     
     nb_tourn = 100
     poss_nb_teams = [16,18,36]
