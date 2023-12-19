@@ -3,6 +3,7 @@ import numpy as np
 import string
 from swiss_rounds_simulator.mwmatching import maxWeightMatching
 import ray
+import os
 import logging
 
 
@@ -268,8 +269,8 @@ def simulate_n_tournaments(n_tournaments, nb_teams, nb_games, thresholds = [] ,s
 def ray_simulate_n_tournaments(n_tournaments, nb_teams, nb_games, thresholds = [] ,strategies = {}, method = 'probabilistic', delta_level = 'linear') :
 
     first = True 
-    
-    ray.init(configure_logging=True, logging_level = logging.CRITICAL)
+    nb_cpu = os.cpu_count()
+    ray.init(configure_logging=True, logging_level = logging.CRITICAL, num_cpus = max(nb_cpu - 2, 1))
     
     @ray.remote
     def ray_simulate_tournament(tournament_index):

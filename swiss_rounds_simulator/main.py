@@ -61,10 +61,10 @@ if __name__ == '__main__':
     
     filepath = os.getcwd() + '/data/'
     
-    nb_tourn = 100
-    poss_nb_teams = [16,18,36]
-    poss_nb_games = [6,6,8]
-    poss_thresholds = [[8],[4,12],[8,24]]
+    nb_tourn = 1000
+    poss_nb_teams = [36]
+    poss_nb_games = [8]
+    poss_thresholds = [[8,24]]
     possible_strats = [1,2,3]
     setups = [('probabilistic','linear','prob_lin'),('probabilistic','exponential', 'prob_exp'),('deterministic','linear','deterministic')]
     
